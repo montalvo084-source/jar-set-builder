@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // ---------------------------------------------------------------------------
 // Storage layer — prefers window.storage (Claude artifacts), falls back to
@@ -19,14 +19,10 @@ const store = {
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-const todayLabel = () =>
-  new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
 const makeSet = (id) => ({
   id,
-  title: todayLabel(),
+  title: '',
   coreIdea: '',
-  brainDump: [],
   sections: [
     { id: uid(), title: 'Open',  type: 'story',  bullets: [] },
     { id: uid(), title: 'Build', type: 'points', bullets: [] },
@@ -73,71 +69,6 @@ function EditableText({ value, onSave, className = '', inputClass = '', placehol
     >
       {value || <span className="opacity-40 italic">{placeholder}</span>}
     </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// BrainItem
-// ---------------------------------------------------------------------------
-function BrainItem({ item, sections, isMenuOpen, onMenuToggle, onAssign, onEdit, onDelete, onDragStart }) {
-  const [editingText, setEditingText] = useState(false);
-  const [draft, setDraft]             = useState(item.text);
-
-  return (
-    <div
-      draggable
-      onDragStart={onDragStart}
-      className="flex items-start gap-2 group relative select-none"
-    >
-      <span className="text-stone-300 mt-1 text-xs cursor-grab shrink-0">⠿</span>
-
-      {editingText ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={() => { onEdit(draft.trim() || item.text); setEditingText(false); }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { onEdit(draft.trim() || item.text); setEditingText(false); }
-            if (e.key === 'Escape') { setDraft(item.text); setEditingText(false); }
-          }}
-          className="flex-1 text-sm text-stone-700 bg-white border border-amber-300 rounded px-2 py-0.5 outline-none"
-          onClick={e => e.stopPropagation()}
-        />
-      ) : (
-        <span
-          onClick={onMenuToggle}
-          onDoubleClick={(e) => { e.stopPropagation(); setDraft(item.text); setEditingText(true); }}
-          className="flex-1 text-sm text-stone-700 leading-snug py-0.5 cursor-pointer"
-          title="Tap to assign · double-tap to edit · drag to section"
-        >
-          {item.text}
-        </span>
-      )}
-
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="text-stone-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-sm mt-0.5 shrink-0"
-      >×</button>
-
-      {isMenuOpen && (
-        <div
-          className="absolute left-5 top-5 bg-white rounded-xl shadow-xl border border-stone-100 py-1 z-30 min-w-36"
-          onClick={e => e.stopPropagation()}
-        >
-          <p className="text-xs text-stone-400 px-3 pt-1.5 pb-1">Assign to…</p>
-          {sections.map(sec => (
-            <button
-              key={sec.id}
-              onClick={() => onAssign(sec.id)}
-              className="block w-full text-left text-sm text-stone-600 hover:bg-amber-50 px-3 py-2 transition-colors"
-            >
-              → {sec.title}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -271,16 +202,8 @@ export default function JarSetBuilder() {
   const [conductorOpen, setConductorOpen]         = useState(false);
   const [apiKey, setApiKey]                       = useState('');
   const [showKeyInput, setShowKeyInput]           = useState(false);
-  const [isListening, setIsListening]             = useState(false);
-  const [captureText, setCaptureText]             = useState('');
   const [dragOverSection, setDragOverSection]     = useState(null);
-  const [assignMenuId, setAssignMenuId]           = useState(null);
   const [collapsedSections, setCollapsedSections] = useState(new Set());
-
-  const recRef = useRef(null);
-  const speechAvailable =
-    typeof window !== 'undefined' &&
-    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const currentSet = currentSetId ? sets[currentSetId] : null;
 
@@ -373,68 +296,6 @@ export default function JarSetBuilder() {
     setCollapsedSections(new Set());
   };
 
-  // ---- Capture ----
-  const addToBrainDump = useCallback((text) => {
-    if (!text.trim()) return;
-    updateSet(s => ({ ...s, brainDump: [...s.brainDump, { id: uid(), text: text.trim() }] }));
-  }, [updateSet]);
-
-  const submitCapture = () => {
-    if (!captureText.trim()) return;
-    addToBrainDump(captureText);
-    setCaptureText('');
-  };
-
-  // ---- Mic ----
-  const toggleMic = () => {
-    if (!speechAvailable) return;
-    if (isListening) { recRef.current?.stop(); setIsListening(false); return; }
-    const SR  = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const rec = new SR();
-    rec.continuous     = false;
-    rec.interimResults = false;
-    rec.onresult = e => addToBrainDump(e.results[0][0].transcript);
-    rec.onend    = () => setIsListening(false);
-    rec.onerror  = () => setIsListening(false);
-    recRef.current = rec;
-    rec.start();
-    setIsListening(true);
-  };
-
-  // ---- Brain Dump actions ----
-  const deleteBrainItem = id => updateSet(s => ({ ...s, brainDump: s.brainDump.filter(i => i.id !== id) }));
-  const editBrainItem   = (id, text) => updateSet(s => ({ ...s, brainDump: s.brainDump.map(i => i.id === id ? { ...i, text } : i) }));
-
-  const assignToSection = (itemId, sectionId) => {
-    updateSet(s => {
-      const item = s.brainDump.find(i => i.id === itemId);
-      if (!item) return s;
-      return {
-        ...s,
-        brainDump: s.brainDump.filter(i => i.id !== itemId),
-        sections:  s.sections.map(sec =>
-          sec.id === sectionId
-            ? { ...sec, bullets: [...sec.bullets, { id: uid(), text: item.text }] }
-            : sec
-        ),
-      };
-    });
-    setAssignMenuId(null);
-  };
-
-  // ---- Brain dump drag → section ----
-  const onBrainDragStart = (e, itemId) => {
-    e.dataTransfer.setData('brainItemId', itemId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const onSectionDrop = (e, sectionId) => {
-    e.preventDefault();
-    const itemId = e.dataTransfer.getData('brainItemId');
-    if (itemId) assignToSection(itemId, sectionId);
-    setDragOverSection(null);
-  };
-
   // ---- Section actions ----
   const addSection    = () => updateSet(s => ({ ...s, sections: [...s.sections, { id: uid(), title: 'New Section', type: 'points', bullets: [] }] }));
   const removeSection = id => updateSet(s => ({ ...s, sections: s.sections.filter(sec => sec.id !== id) }));
@@ -480,9 +341,6 @@ export default function JarSetBuilder() {
 
   // ---- Conductor ----
   const toggleConductor = () => {
-    if (!conductorOpen && currentSet?.brainDump.length > 0 && !conductorInput.trim()) {
-      setConductorInput(currentSet.brainDump.map(i => i.text).join('\n'));
-    }
     setConductorOpen(o => !o);
   };
 
@@ -582,9 +440,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
     );
   }
 
-  const isEmptySet = !currentSet.coreIdea &&
-    currentSet.brainDump.length === 0 &&
-    currentSet.sections.every(s => s.bullets.length === 0);
+  const isEmptySet = !currentSet.coreIdea && currentSet.sections.every(s => s.bullets.length === 0);
 
   // ==========================================================================
   // DELIVERY MODE
@@ -596,14 +452,16 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
           onClick={() => setMode('dev')}
           className="fixed top-4 right-5 text-xs text-stone-600 hover:text-stone-400 transition-colors z-10"
         >
-          ← Dev
+          ← Edit
         </button>
 
         <div className="max-w-3xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-stone-700 mb-5">The Jar</p>
+          {currentSet.title && (
+            <p className="text-xs uppercase tracking-widest text-stone-600 mb-3">{currentSet.title}</p>
+          )}
 
           <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-14">
-            {currentSet.coreIdea || <span className="text-stone-700 italic font-normal">No core idea</span>}
+            {currentSet.coreIdea || <span className="text-stone-700 italic font-normal">No core idea set</span>}
           </h1>
 
           {currentSet.sections.map(section => (
@@ -634,10 +492,8 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
   // DEV MODE
   // ==========================================================================
   return (
-    <div
-      className="min-h-screen bg-amber-50 pb-24 relative"
-      onClick={() => setAssignMenuId(null)}
-    >
+    <div className="min-h-screen bg-amber-50 relative">
+
       {/* ---- Library Bar ---- */}
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-100 px-4 py-2.5 flex items-center gap-2 flex-wrap">
         <select
@@ -646,7 +502,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
           className="text-sm text-stone-700 bg-transparent border border-stone-200 rounded-lg px-2 py-1.5 max-w-xs cursor-pointer focus:outline-none focus:border-amber-400"
         >
           {index.map(({ id, title }) => (
-            <option key={id} value={id}>{title}</option>
+            <option key={id} value={id}>{title || 'Untitled Video'}</option>
           ))}
         </select>
 
@@ -690,8 +546,10 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
 
           <button
             onClick={toggleConductor}
-            className={`text-sm rounded-lg px-4 py-1.5 transition-colors ${
-              conductorOpen ? 'bg-stone-100 text-stone-700' : 'text-stone-400 hover:text-stone-700'
+            className={`text-sm rounded-lg px-4 py-1.5 transition-colors font-medium ${
+              conductorOpen
+                ? 'bg-stone-100 text-stone-700'
+                : 'bg-amber-500 text-white hover:bg-amber-600'
             }`}
           >
             Conductor
@@ -711,63 +569,40 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
         <div className={`flex-1 transition-all duration-200 ${conductorOpen ? 'mr-96' : ''}`}>
           <div className="max-w-2xl mx-auto px-4 py-8">
 
-            {/* Sticky Core Idea + title */}
+            {/* Sticky header: Video Title + Core Idea */}
             <div className="sticky top-11 z-10 bg-amber-50 -mx-4 px-4 pb-4">
-              <div className="mb-2">
+              <div className="mb-4">
+                <p className="text-xs uppercase tracking-widest text-stone-400 mb-2">Video Title</p>
+                <input
+                  type="text"
+                  value={currentSet.title}
+                  onChange={e => updateSet(s => ({ ...s, title: e.target.value }))}
+                  placeholder="Name this video…"
+                  className="w-full text-xl font-semibold text-stone-800 bg-transparent border-b border-stone-200 focus:border-amber-400 outline-none pb-2 placeholder-stone-300 transition-colors"
+                />
+              </div>
+              <div>
                 <p className="text-xs uppercase tracking-widest text-stone-400 mb-2">Core Idea</p>
                 <input
                   type="text"
                   value={currentSet.coreIdea}
                   onChange={e => updateSet(s => ({ ...s, coreIdea: e.target.value }))}
                   placeholder="The one sentence this whole video proves…"
-                  className="w-full text-2xl font-medium text-stone-800 bg-transparent border-b border-stone-200 focus:border-amber-400 outline-none pb-2 placeholder-stone-300 transition-colors"
+                  className="w-full text-lg font-medium text-stone-800 bg-transparent border-b border-stone-200 focus:border-amber-400 outline-none pb-2 placeholder-stone-300 transition-colors"
                 />
               </div>
-              <EditableText
-                value={currentSet.title}
-                onSave={t => updateSet(s => ({ ...s, title: t }))}
-                className="text-xs text-stone-400 tracking-wide"
-                inputClass="text-xs text-stone-500 border-b border-stone-200 outline-none bg-transparent tracking-wide"
-                placeholder="Set title"
-              />
             </div>
-
-            {/* Brain Dump tray */}
-            {currentSet.brainDump.length > 0 && (
-              <div className="mb-8 mt-4">
-                <p className="text-xs uppercase tracking-widest text-stone-400 mb-2">
-                  Brain Dump
-                  <span className="normal-case text-stone-300 ml-1">— tap to assign · drag to section</span>
-                </p>
-                <div className="bg-amber-50 rounded-xl border border-amber-100 p-3 space-y-2">
-                  {currentSet.brainDump.map(item => (
-                    <BrainItem
-                      key={item.id}
-                      item={item}
-                      sections={currentSet.sections}
-                      isMenuOpen={assignMenuId === item.id}
-                      onMenuToggle={e => { e.stopPropagation(); setAssignMenuId(prev => prev === item.id ? null : item.id); }}
-                      onAssign={sId => assignToSection(item.id, sId)}
-                      onEdit={text => editBrainItem(item.id, text)}
-                      onDelete={() => deleteBrainItem(item.id)}
-                      onDragStart={e => onBrainDragStart(e, item.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Empty state or Sections */}
             {isEmptySet ? (
-              <div className="text-center py-20">
-                <p className="text-stone-400 text-base mb-1">What's this video about?</p>
-                <p className="text-stone-300 text-sm mb-6">Start by dumping your thoughts below ↓</p>
-                <p className="text-xs text-stone-300">
-                  Or open{' '}
+              <div className="text-center py-20 mt-4">
+                <p className="text-stone-400 text-base mb-1">Ready when you are.</p>
+                <p className="text-stone-300 text-sm mb-6">
+                  Paste your raw notes into{' '}
                   <button onClick={toggleConductor} className="text-stone-400 underline underline-offset-2 hover:text-amber-600 transition-colors">
                     Conductor
                   </button>
-                  {' '}to paste your notes all at once
+                  {' '}and it will organize them for you.
                 </p>
               </div>
             ) : (
@@ -786,7 +621,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
                     isDragOver={dragOverSection === section.id}
                     onDragOver={e => { e.preventDefault(); setDragOverSection(section.id); }}
                     onDragLeave={() => setDragOverSection(null)}
-                    onDrop={e => onSectionDrop(e, section.id)}
+                    onDrop={e => { e.preventDefault(); setDragOverSection(null); }}
                     isCollapsed={collapsedSections.has(section.id)}
                     onToggleCollapse={() => toggleSectionCollapse(section.id)}
                   />
@@ -820,19 +655,19 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
               {/* Input zone */}
               <div className="shrink-0 mb-4">
                 <p className="text-xs text-stone-400 mb-2 leading-snug">
-                  Paste your raw notes, half-finished thoughts, or transcripts below. The Conductor will reorganize them into an Open / Build / Close structure with bridges.
+                  Paste your raw notes, voice memo transcript, or anything you've got. The Conductor will find the natural structure and organize it for you.
                 </p>
                 <textarea
                   value={conductorInput}
                   onChange={e => setConductorInput(e.target.value)}
-                  placeholder="Dump everything here — bullet points, voice memo transcript, random thoughts, half sentences, anything…"
+                  placeholder="Paste everything here — messy notes, half sentences, bullet points, transcript, whatever you've got…"
                   className="w-full text-sm text-stone-700 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 outline-none focus:border-amber-300 transition-colors resize-none leading-snug"
-                  rows={8}
+                  rows={10}
                 />
                 <button
                   onClick={runConductor}
                   disabled={conductorLoading || !conductorInput.trim()}
-                  className="mt-2 w-full text-sm bg-stone-800 text-white rounded-xl px-4 py-2 hover:bg-stone-700 disabled:opacity-40 transition-colors"
+                  className="mt-2 w-full text-sm bg-amber-500 text-white rounded-xl px-4 py-2 hover:bg-amber-600 disabled:opacity-40 transition-colors font-medium"
                 >
                   {conductorLoading ? 'Organizing…' : 'Organize →'}
                 </button>
@@ -888,37 +723,6 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
 
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Capture Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 px-4 py-3 flex gap-2 z-10 shadow-lg">
-        <input
-          type="text"
-          value={captureText}
-          onChange={e => setCaptureText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submitCapture(); }}
-          placeholder="Capture a thought…"
-          className="flex-1 text-sm text-stone-800 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 outline-none focus:border-amber-300 transition-colors"
-        />
-        <button
-          onClick={submitCapture}
-          className="text-sm bg-amber-500 text-white rounded-xl px-4 py-2 hover:bg-amber-600 transition-colors font-medium"
-        >
-          Dump
-        </button>
-        {speechAvailable && (
-          <button
-            onClick={toggleMic}
-            className={`rounded-xl px-3 py-2 text-base transition-all ${
-              isListening
-                ? 'bg-red-500 text-white scale-105 shadow-md'
-                : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
-            }`}
-            title={isListening ? 'Stop recording' : 'Voice capture'}
-          >
-            🎙
-          </button>
         )}
       </div>
     </div>
