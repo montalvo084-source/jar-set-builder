@@ -144,7 +144,7 @@ function BrainItem({ item, sections, isMenuOpen, onMenuToggle, onAssign, onEdit,
 // ---------------------------------------------------------------------------
 // BulletRow — single bullet inside a section
 // ---------------------------------------------------------------------------
-function BulletRow({ bullet, idx, sectionId, onEdit, onRemove, onDragStart, onBulletDrop }) {
+function BulletRow({ bullet, idx, onEdit, onRemove, onDragStart, onBulletDrop }) {
   const [over, setOver] = useState(false);
 
   return (
@@ -187,16 +187,24 @@ function SectionCard({
   section, onUpdate, onRemove, onAddBullet, onRemoveBullet, onEditBullet,
   onBulletDragStart, onBulletDrop,
   isDragOver, onDragOver, onDragLeave, onDrop,
+  isCollapsed, onToggleCollapse,
 }) {
   return (
     <div
-      className={`transition-colors ${isDragOver ? 'bg-amber-50 rounded-xl' : ''}`}
+      className={`transition-colors group/section ${isDragOver ? 'bg-amber-50 rounded-xl' : ''}`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-1 pt-6 pb-1">
+        <button
+          onClick={onToggleCollapse}
+          className="text-stone-300 hover:text-stone-500 transition-colors text-xs w-3 shrink-0 leading-none"
+          title={isCollapsed ? 'Expand' : 'Collapse'}
+        >
+          {isCollapsed ? '›' : '⌄'}
+        </button>
         <EditableText
           value={section.title}
           onSave={t => onUpdate({ title: t })}
@@ -204,9 +212,12 @@ function SectionCard({
           inputClass="font-semibold text-stone-500 text-xs uppercase tracking-widest border-b border-amber-400 outline-none bg-transparent"
           placeholder="Section title"
         />
+        {section.bullets.length > 0 && (
+          <span className="text-xs text-stone-300 tabular-nums">{section.bullets.length}</span>
+        )}
         <button
           onClick={() => onUpdate({ type: section.type === 'story' ? 'points' : 'story' })}
-          className={`text-xs rounded-full px-2.5 py-0.5 border transition-colors ml-1 shrink-0 ${
+          className={`text-xs rounded-full px-2.5 py-0.5 border transition-all ml-1 shrink-0 opacity-0 group-hover/section:opacity-100 ${
             section.type === 'story'
               ? 'border-amber-300 text-amber-700 bg-amber-50'
               : 'border-stone-200 text-stone-500 bg-stone-50'
@@ -216,31 +227,32 @@ function SectionCard({
         </button>
         <button
           onClick={onRemove}
-          className="ml-auto text-stone-200 hover:text-red-400 transition-colors text-lg leading-none"
+          className="ml-auto text-stone-200 hover:text-red-400 transition-colors text-lg leading-none opacity-0 group-hover/section:opacity-100"
         >×</button>
       </div>
 
       {/* Bullets */}
-      <div className="px-1 pb-6 space-y-1">
-        {section.bullets.map((bullet, idx) => (
-          <BulletRow
-            key={bullet.id}
-            bullet={bullet}
-            idx={idx}
-            sectionId={section.id}
-            onEdit={onEditBullet}
-            onRemove={onRemoveBullet}
-            onDragStart={e => onBulletDragStart(e, bullet.id, idx)}
-            onBulletDrop={onBulletDrop}
-          />
-        ))}
-        <button
-          onClick={onAddBullet}
-          className="text-xs text-stone-400 hover:text-amber-600 mt-2 transition-colors"
-        >
-          + bullet
-        </button>
-      </div>
+      {!isCollapsed && (
+        <div className="px-1 pb-6 space-y-1">
+          {section.bullets.map((bullet, idx) => (
+            <BulletRow
+              key={bullet.id}
+              bullet={bullet}
+              idx={idx}
+              onEdit={onEditBullet}
+              onRemove={onRemoveBullet}
+              onDragStart={e => onBulletDragStart(e, bullet.id, idx)}
+              onBulletDrop={onBulletDrop}
+            />
+          ))}
+          <button
+            onClick={onAddBullet}
+            className="text-xs text-stone-400 hover:text-amber-600 mt-2 transition-colors"
+          >
+            + bullet
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -249,20 +261,21 @@ function SectionCard({
 // Main component
 // ---------------------------------------------------------------------------
 export default function JarSetBuilder() {
-  const [mode, setMode]                         = useState('dev');
-  const [sets, setSets]                         = useState({});
-  const [index, setIndex]                       = useState([]);
-  const [currentSetId, setCurrentSetId]         = useState(null);
-  const [conductorInput, setConductorInput]     = useState('');
-  const [conductorOutput, setConductorOutput]   = useState(null);
-  const [conductorLoading, setConductorLoading] = useState(false);
-  const [conductorOpen, setConductorOpen]       = useState(false);
-  const [apiKey, setApiKey]                     = useState('');
-  const [showKeyInput, setShowKeyInput]         = useState(false);
-  const [isListening, setIsListening]           = useState(false);
-  const [captureText, setCaptureText]           = useState('');
-  const [dragOverSection, setDragOverSection]   = useState(null);
-  const [assignMenuId, setAssignMenuId]         = useState(null);
+  const [mode, setMode]                           = useState('dev');
+  const [sets, setSets]                           = useState({});
+  const [index, setIndex]                         = useState([]);
+  const [currentSetId, setCurrentSetId]           = useState(null);
+  const [conductorInput, setConductorInput]       = useState('');
+  const [conductorOutput, setConductorOutput]     = useState(null);
+  const [conductorLoading, setConductorLoading]   = useState(false);
+  const [conductorOpen, setConductorOpen]         = useState(false);
+  const [apiKey, setApiKey]                       = useState('');
+  const [showKeyInput, setShowKeyInput]           = useState(false);
+  const [isListening, setIsListening]             = useState(false);
+  const [captureText, setCaptureText]             = useState('');
+  const [dragOverSection, setDragOverSection]     = useState(null);
+  const [assignMenuId, setAssignMenuId]           = useState(null);
+  const [collapsedSections, setCollapsedSections] = useState(new Set());
 
   const recRef = useRef(null);
   const speechAvailable =
@@ -331,6 +344,7 @@ export default function JarSetBuilder() {
     setConductorInput('');
     setConductorOutput(null);
     setConductorOpen(false);
+    setCollapsedSections(new Set());
   };
 
   const duplicateSet = () => {
@@ -348,6 +362,7 @@ export default function JarSetBuilder() {
     setConductorInput('');
     setConductorOutput(null);
     setConductorOpen(false);
+    setCollapsedSections(new Set());
   };
 
   const loadSet = (id) => {
@@ -355,6 +370,7 @@ export default function JarSetBuilder() {
     setConductorInput('');
     setConductorOutput(null);
     setConductorOpen(false);
+    setCollapsedSections(new Set());
   };
 
   // ---- Capture ----
@@ -424,6 +440,14 @@ export default function JarSetBuilder() {
   const removeSection = id => updateSet(s => ({ ...s, sections: s.sections.filter(sec => sec.id !== id) }));
   const updateSection = (id, patch) => updateSet(s => ({ ...s, sections: s.sections.map(sec => sec.id === id ? { ...sec, ...patch } : sec) }));
 
+  const toggleSectionCollapse = (id) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   // ---- Bullet actions ----
   const addBullet    = sId => updateSet(s => ({ ...s, sections: s.sections.map(sec => sec.id === sId ? { ...sec, bullets: [...sec.bullets, { id: uid(), text: '' }] } : sec) }));
   const removeBullet = (sId, bId) => updateSet(s => ({ ...s, sections: s.sections.map(sec => sec.id === sId ? { ...sec, bullets: sec.bullets.filter(b => b.id !== bId) } : sec) }));
@@ -455,6 +479,13 @@ export default function JarSetBuilder() {
   };
 
   // ---- Conductor ----
+  const toggleConductor = () => {
+    if (!conductorOpen && currentSet?.brainDump.length > 0 && !conductorInput.trim()) {
+      setConductorInput(currentSet.brainDump.map(i => i.text).join('\n'));
+    }
+    setConductorOpen(o => !o);
+  };
+
   const runConductor = async () => {
     if (!conductorInput.trim()) return;
     if (!apiKey) { setShowKeyInput(true); return; }
@@ -532,6 +563,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
     setConductorOutput(null);
     setConductorInput('');
     setConductorOpen(false);
+    setCollapsedSections(new Set());
   };
 
   // ---- Loading guard ----
@@ -542,6 +574,10 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
       </div>
     );
   }
+
+  const isEmptySet = !currentSet.coreIdea &&
+    currentSet.brainDump.length === 0 &&
+    currentSet.sections.every(s => s.bullets.length === 0);
 
   // ==========================================================================
   // DELIVERY MODE
@@ -646,7 +682,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
           )}
 
           <button
-            onClick={() => setConductorOpen(o => !o)}
+            onClick={toggleConductor}
             className={`text-sm rounded-lg px-4 py-1.5 transition-colors ${
               conductorOpen ? 'bg-stone-100 text-stone-700' : 'text-stone-400 hover:text-stone-700'
             }`}
@@ -668,20 +704,18 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
         <div className={`flex-1 transition-all duration-200 ${conductorOpen ? 'mr-96' : ''}`}>
           <div className="max-w-2xl mx-auto px-4 py-8">
 
-            {/* Core Idea */}
-            <div className="mb-3">
-              <p className="text-xs uppercase tracking-widest text-stone-400 mb-2">Core Idea</p>
-              <input
-                type="text"
-                value={currentSet.coreIdea}
-                onChange={e => updateSet(s => ({ ...s, coreIdea: e.target.value }))}
-                placeholder="The one sentence this whole video proves…"
-                className="w-full text-2xl font-medium text-stone-800 bg-transparent border-b border-stone-200 focus:border-amber-400 outline-none pb-2 placeholder-stone-300 transition-colors"
-              />
-            </div>
-
-            {/* Set title (inline editable) */}
-            <div className="mb-8">
+            {/* Sticky Core Idea + title */}
+            <div className="sticky top-11 z-10 bg-amber-50 -mx-4 px-4 pb-4">
+              <div className="mb-2">
+                <p className="text-xs uppercase tracking-widest text-stone-400 mb-2">Core Idea</p>
+                <input
+                  type="text"
+                  value={currentSet.coreIdea}
+                  onChange={e => updateSet(s => ({ ...s, coreIdea: e.target.value }))}
+                  placeholder="The one sentence this whole video proves…"
+                  className="w-full text-2xl font-medium text-stone-800 bg-transparent border-b border-stone-200 focus:border-amber-400 outline-none pb-2 placeholder-stone-300 transition-colors"
+                />
+              </div>
               <EditableText
                 value={currentSet.title}
                 onSave={t => updateSet(s => ({ ...s, title: t }))}
@@ -693,7 +727,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
 
             {/* Brain Dump tray */}
             {currentSet.brainDump.length > 0 && (
-              <div className="mb-8">
+              <div className="mb-8 mt-4">
                 <p className="text-xs uppercase tracking-widest text-stone-400 mb-2">
                   Brain Dump
                   <span className="normal-case text-stone-300 ml-1">— tap to assign · drag to section</span>
@@ -716,33 +750,49 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
               </div>
             )}
 
-            {/* Sections */}
-            <div className="space-y-0 divide-y divide-stone-100">
-              {currentSet.sections.map(section => (
-                <SectionCard
-                  key={section.id}
-                  section={section}
-                  onUpdate={patch => updateSection(section.id, patch)}
-                  onRemove={() => removeSection(section.id)}
-                  onAddBullet={() => addBullet(section.id)}
-                  onRemoveBullet={bId => removeBullet(section.id, bId)}
-                  onEditBullet={(bId, text) => editBullet(section.id, bId, text)}
-                  onBulletDragStart={(e, bId, idx) => onBulletDragStart(e, section.id, bId, idx)}
-                  onBulletDrop={(e, idx) => onBulletDrop(e, section.id, idx)}
-                  isDragOver={dragOverSection === section.id}
-                  onDragOver={e => { e.preventDefault(); setDragOverSection(section.id); }}
-                  onDragLeave={() => setDragOverSection(null)}
-                  onDrop={e => onSectionDrop(e, section.id)}
-                />
-              ))}
+            {/* Empty state or Sections */}
+            {isEmptySet ? (
+              <div className="text-center py-20">
+                <p className="text-stone-400 text-base mb-1">What's this video about?</p>
+                <p className="text-stone-300 text-sm mb-6">Start by dumping your thoughts below ↓</p>
+                <p className="text-xs text-stone-300">
+                  Or open{' '}
+                  <button onClick={toggleConductor} className="text-stone-400 underline underline-offset-2 hover:text-amber-600 transition-colors">
+                    Conductor
+                  </button>
+                  {' '}to paste your notes all at once
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-0 divide-y divide-stone-100 mt-4">
+                {currentSet.sections.map(section => (
+                  <SectionCard
+                    key={section.id}
+                    section={section}
+                    onUpdate={patch => updateSection(section.id, patch)}
+                    onRemove={() => removeSection(section.id)}
+                    onAddBullet={() => addBullet(section.id)}
+                    onRemoveBullet={bId => removeBullet(section.id, bId)}
+                    onEditBullet={(bId, text) => editBullet(section.id, bId, text)}
+                    onBulletDragStart={(e, bId, idx) => onBulletDragStart(e, section.id, bId, idx)}
+                    onBulletDrop={(e, idx) => onBulletDrop(e, section.id, idx)}
+                    isDragOver={dragOverSection === section.id}
+                    onDragOver={e => { e.preventDefault(); setDragOverSection(section.id); }}
+                    onDragLeave={() => setDragOverSection(null)}
+                    onDrop={e => onSectionDrop(e, section.id)}
+                    isCollapsed={collapsedSections.has(section.id)}
+                    onToggleCollapse={() => toggleSectionCollapse(section.id)}
+                  />
+                ))}
 
-              <button
-                onClick={addSection}
-                className="text-xs text-stone-300 hover:text-amber-600 px-1 py-4 w-full text-left transition-colors"
-              >
-                + Add Section
-              </button>
-            </div>
+                <button
+                  onClick={addSection}
+                  className="text-xs text-stone-300 hover:text-amber-600 px-1 py-4 w-full text-left transition-colors"
+                >
+                  + Add Section
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
