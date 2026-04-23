@@ -68,7 +68,7 @@ function EditableText({ value, onSave, className = '', inputClass = '', placehol
   return (
     <span
       onClick={() => { setDraft(value); setEditing(true); }}
-      className={`${className} cursor-text`}
+      className={`${className} cursor-text hover:border-b hover:border-stone-200`}
       title="Click to edit"
     >
       {value || <span className="opacity-40 italic">{placeholder}</span>}
@@ -190,18 +190,18 @@ function SectionCard({
 }) {
   return (
     <div
-      className={`bg-white rounded-2xl border-2 transition-colors ${isDragOver ? 'border-amber-400 bg-amber-50' : 'border-stone-100'}`}
+      className={`transition-colors ${isDragOver ? 'bg-amber-50 rounded-xl' : ''}`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+      <div className="flex items-center gap-2 px-1 pt-6 pb-1">
         <EditableText
           value={section.title}
           onSave={t => onUpdate({ title: t })}
-          className="font-semibold text-stone-800 text-base"
-          inputClass="font-semibold text-stone-800 text-base border-b border-amber-400 outline-none bg-transparent"
+          className="font-semibold text-stone-500 text-xs uppercase tracking-widest"
+          inputClass="font-semibold text-stone-500 text-xs uppercase tracking-widest border-b border-amber-400 outline-none bg-transparent"
           placeholder="Section title"
         />
         <button
@@ -221,7 +221,7 @@ function SectionCard({
       </div>
 
       {/* Bullets */}
-      <div className="px-4 pb-4 space-y-1">
+      <div className="px-1 pb-6 space-y-1">
         {section.bullets.map((bullet, idx) => (
           <BulletRow
             key={bullet.id}
@@ -249,19 +249,20 @@ function SectionCard({
 // Main component
 // ---------------------------------------------------------------------------
 export default function JarSetBuilder() {
-  const [mode, setMode]                     = useState('dev');
-  const [sets, setSets]                     = useState({});
-  const [index, setIndex]                   = useState([]);
-  const [currentSetId, setCurrentSetId]     = useState(null);
-  const [conductorNotes, setConductorNotes] = useState([]);
+  const [mode, setMode]                         = useState('dev');
+  const [sets, setSets]                         = useState({});
+  const [index, setIndex]                       = useState([]);
+  const [currentSetId, setCurrentSetId]         = useState(null);
+  const [conductorInput, setConductorInput]     = useState('');
+  const [conductorOutput, setConductorOutput]   = useState(null);
   const [conductorLoading, setConductorLoading] = useState(false);
-  const [conductorOpen, setConductorOpen]   = useState(false);
-  const [apiKey, setApiKey]                 = useState('');
-  const [showKeyInput, setShowKeyInput]     = useState(false);
-  const [isListening, setIsListening]       = useState(false);
-  const [captureText, setCaptureText]       = useState('');
-  const [dragOverSection, setDragOverSection] = useState(null);
-  const [assignMenuId, setAssignMenuId]     = useState(null);
+  const [conductorOpen, setConductorOpen]       = useState(false);
+  const [apiKey, setApiKey]                     = useState('');
+  const [showKeyInput, setShowKeyInput]         = useState(false);
+  const [isListening, setIsListening]           = useState(false);
+  const [captureText, setCaptureText]           = useState('');
+  const [dragOverSection, setDragOverSection]   = useState(null);
+  const [assignMenuId, setAssignMenuId]         = useState(null);
 
   const recRef = useRef(null);
   const speechAvailable =
@@ -327,7 +328,8 @@ export default function JarSetBuilder() {
     });
     store.set(`set:${id}`, JSON.stringify(s));
     setCurrentSetId(id);
-    setConductorNotes([]);
+    setConductorInput('');
+    setConductorOutput(null);
     setConductorOpen(false);
   };
 
@@ -343,13 +345,15 @@ export default function JarSetBuilder() {
     });
     store.set(`set:${id}`, JSON.stringify(s));
     setCurrentSetId(id);
-    setConductorNotes([]);
+    setConductorInput('');
+    setConductorOutput(null);
     setConductorOpen(false);
   };
 
   const loadSet = (id) => {
     setCurrentSetId(id);
-    setConductorNotes([]);
+    setConductorInput('');
+    setConductorOutput(null);
     setConductorOpen(false);
   };
 
@@ -451,21 +455,33 @@ export default function JarSetBuilder() {
   };
 
   // ---- Conductor ----
-  const checkMySet = async () => {
-    if (!currentSet) return;
+  const runConductor = async () => {
+    if (!conductorInput.trim()) return;
     if (!apiKey) { setShowKeyInput(true); return; }
     setConductorLoading(true);
-    setConductorOpen(true);
-    setConductorNotes([]);
+    setConductorOutput(null);
 
-    const prompt = `You are a set conductor for a YouTube creator named Gabriel. Your only job is to flag structural issues — never rewrite content, never suggest new topics.
+    const prompt = `You are the Conductor — a writing assistant for Gabriel, a YouTube creator. Gabriel has ADHD and struggles to build bridges between ideas. He will paste raw, messy notes, half-finished thoughts, and fragments. Your job is to reorganize them into a clear, coherent set structure with an Open, Build, and Close section, and write the transition bridges between sections.
 
-Analyze this set and return ONLY a valid JSON array of up to 8 short, action-oriented observations (one sentence each). Flag any of: missing bridges between sections, orphan bullets that don't connect to the Core Idea, logic gaps within a section, callback or bookend opportunities (open ↔ close), or drift from the Core Idea.
+IMPORTANT RULES:
+- Do not invent new content. Only use ideas present in the input.
+- Keep Gabriel's voice — don't make it corporate or polished.
+- Bridge lines should sound like natural spoken transitions, not written prose.
+- Every bullet should be one concrete beat — one idea, one moment, one point.
+- The core idea should be one sentence naming the actual thesis of the video.
 
-SET:
-${JSON.stringify({ coreIdea: currentSet.coreIdea, sections: currentSet.sections.map(s => ({ title: s.title, type: s.type, bullets: s.bullets.map(b => b.text) })) }, null, 2)}
+INPUT (Gabriel's raw notes):
+${conductorInput}
 
-Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
+Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
+{
+  "coreIdea": "One sentence thesis of the whole video",
+  "sections": [
+    { "title": "Open",  "type": "story",  "bullets": ["..."], "bridge": "Spoken transition into Build" },
+    { "title": "Build", "type": "points", "bullets": ["..."], "bridge": "Spoken transition into Close" },
+    { "title": "Close", "type": "story",  "bullets": ["..."], "bridge": null }
+  ]
+}`;
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -478,20 +494,44 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
+          max_tokens: 2000,
           messages: [{ role: 'user', content: prompt }],
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error.message);
-      const text  = data.content?.[0]?.text || '[]';
-      const match = text.match(/\[[\s\S]*\]/);
-      setConductorNotes(match ? JSON.parse(match[0]) : ['No structural issues found.']);
+      const text  = data.content?.[0]?.text || '{}';
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        setConductorOutput(JSON.parse(match[0]));
+      } else {
+        throw new Error('Could not parse response.');
+      }
     } catch (err) {
-      setConductorNotes([`Could not reach the conductor: ${err.message || 'check your API key and network.'}`]);
+      setConductorOutput({ error: err.message || 'Check your API key and network.' });
     } finally {
       setConductorLoading(false);
     }
+  };
+
+  const applyConductorOutput = () => {
+    if (!conductorOutput || conductorOutput.error) return;
+    updateSet(s => ({
+      ...s,
+      coreIdea: conductorOutput.coreIdea ?? s.coreIdea,
+      sections: conductorOutput.sections.map(sec => ({
+        id: uid(),
+        title: sec.title,
+        type: sec.type,
+        bullets: [
+          ...sec.bullets.map(text => ({ id: uid(), text })),
+          ...(sec.bridge ? [{ id: uid(), text: sec.bridge }] : []),
+        ],
+      })),
+    }));
+    setConductorOutput(null);
+    setConductorInput('');
+    setConductorOpen(false);
   };
 
   // ---- Loading guard ----
@@ -556,7 +596,7 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
       onClick={() => setAssignMenuId(null)}
     >
       {/* ---- Library Bar ---- */}
-      <div className="sticky top-0 z-20 bg-white border-b border-stone-100 px-4 py-2.5 flex items-center gap-2 flex-wrap shadow-sm">
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-100 px-4 py-2.5 flex items-center gap-2 flex-wrap">
         <select
           value={currentSetId || ''}
           onChange={e => loadSet(e.target.value)}
@@ -606,6 +646,15 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
           )}
 
           <button
+            onClick={() => setConductorOpen(o => !o)}
+            className={`text-sm rounded-lg px-4 py-1.5 transition-colors ${
+              conductorOpen ? 'bg-stone-100 text-stone-700' : 'text-stone-400 hover:text-stone-700'
+            }`}
+          >
+            Conductor
+          </button>
+
+          <button
             onClick={() => setMode('delivery')}
             className="text-sm bg-stone-800 text-white rounded-lg px-4 py-1.5 hover:bg-stone-700 transition-colors"
           >
@@ -616,7 +665,7 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
 
       {/* ---- Main + optional Conductor panel ---- */}
       <div className="flex">
-        <div className={`flex-1 transition-all duration-200 ${conductorOpen ? 'mr-72' : ''}`}>
+        <div className={`flex-1 transition-all duration-200 ${conductorOpen ? 'mr-96' : ''}`}>
           <div className="max-w-2xl mx-auto px-4 py-8">
 
             {/* Core Idea */}
@@ -627,7 +676,7 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
                 value={currentSet.coreIdea}
                 onChange={e => updateSet(s => ({ ...s, coreIdea: e.target.value }))}
                 placeholder="The one sentence this whole video proves…"
-                className="w-full text-2xl font-medium text-stone-800 bg-transparent border-b-2 border-amber-200 focus:border-amber-400 outline-none pb-2 placeholder-stone-300 transition-colors"
+                className="w-full text-2xl font-medium text-stone-800 bg-transparent border-b border-stone-200 focus:border-amber-400 outline-none pb-2 placeholder-stone-300 transition-colors"
               />
             </div>
 
@@ -649,7 +698,7 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
                   Brain Dump
                   <span className="normal-case text-stone-300 ml-1">— tap to assign · drag to section</span>
                 </p>
-                <div className="bg-amber-100 rounded-2xl p-3 space-y-2">
+                <div className="bg-amber-50 rounded-xl border border-amber-100 p-3 space-y-2">
                   {currentSet.brainDump.map(item => (
                     <BrainItem
                       key={item.id}
@@ -668,7 +717,7 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
             )}
 
             {/* Sections */}
-            <div className="space-y-4">
+            <div className="space-y-0 divide-y divide-stone-100">
               {currentSet.sections.map(section => (
                 <SectionCard
                   key={section.id}
@@ -689,7 +738,7 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
 
               <button
                 onClick={addSection}
-                className="text-sm text-stone-400 hover:text-amber-700 border-2 border-dashed border-stone-200 hover:border-amber-300 rounded-2xl px-4 py-3 w-full text-left transition-colors"
+                className="text-xs text-stone-300 hover:text-amber-600 px-1 py-4 w-full text-left transition-colors"
               >
                 + Add Section
               </button>
@@ -699,46 +748,91 @@ Return ONLY a JSON array: ["Observation one.", "Observation two."]`;
 
         {/* Conductor side panel */}
         {conductorOpen && (
-          <div className="fixed right-0 top-0 bottom-0 w-72 bg-white border-l border-stone-100 overflow-y-auto z-20 shadow-2xl">
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-sm font-semibold text-stone-700">🎼 Conductor</h3>
+          <div className="fixed right-0 top-0 bottom-0 w-96 bg-white border-l border-stone-100 z-20 shadow-lg flex flex-col">
+            <div className="p-5 flex flex-col h-full">
+
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4 shrink-0">
+                <h3 className="text-sm font-semibold text-stone-700">Conductor</h3>
                 <button
                   onClick={() => setConductorOpen(false)}
                   className="text-stone-300 hover:text-stone-600 text-xl leading-none transition-colors"
                 >×</button>
               </div>
 
-              {conductorLoading ? (
-                <p className="text-sm text-stone-400 animate-pulse">Listening to your set…</p>
-              ) : conductorNotes.length === 0 ? (
-                <p className="text-sm text-stone-400 italic">No observations.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {conductorNotes.map((note, i) => (
-                    <li key={i} className="flex gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
-                      <span className="flex-1 text-sm text-stone-700 leading-snug">{note}</span>
+              {/* Input zone */}
+              <div className="shrink-0 mb-4">
+                <p className="text-xs text-stone-400 mb-2 leading-snug">
+                  Paste your raw notes, half-finished thoughts, or transcripts below. The Conductor will reorganize them into an Open / Build / Close structure with bridges.
+                </p>
+                <textarea
+                  value={conductorInput}
+                  onChange={e => setConductorInput(e.target.value)}
+                  placeholder="Dump everything here — bullet points, voice memo transcript, random thoughts, half sentences, anything…"
+                  className="w-full text-sm text-stone-700 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 outline-none focus:border-amber-300 transition-colors resize-none leading-snug"
+                  rows={8}
+                />
+                <button
+                  onClick={runConductor}
+                  disabled={conductorLoading || !conductorInput.trim()}
+                  className="mt-2 w-full text-sm bg-stone-800 text-white rounded-xl px-4 py-2 hover:bg-stone-700 disabled:opacity-40 transition-colors"
+                >
+                  {conductorLoading ? 'Organizing…' : 'Organize →'}
+                </button>
+              </div>
+
+              {/* Output zone */}
+              {conductorOutput && !conductorOutput.error && (
+                <div className="flex-1 overflow-y-auto">
+                  <div className="border-t border-stone-100 pt-4">
+                    <p className="text-xs text-stone-400 uppercase tracking-widest mb-3">Result</p>
+
+                    <p className="text-xs text-stone-500 mb-1 font-medium">Core Idea</p>
+                    <p className="text-sm text-stone-800 mb-4 leading-snug">{conductorOutput.coreIdea}</p>
+
+                    {conductorOutput.sections?.map((sec, i) => (
+                      <div key={i} className="mb-4">
+                        <p className="text-xs text-stone-400 uppercase tracking-widest mb-1">{sec.title}</p>
+                        <ul className="space-y-1 mb-2">
+                          {sec.bullets?.map((b, j) => (
+                            <li key={j} className="text-sm text-stone-700 flex gap-1.5 leading-snug">
+                              <span className="text-amber-400 shrink-0">•</span>
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {sec.bridge && (
+                          <p className="text-xs text-stone-400 italic pl-3 border-l border-stone-200">
+                            Bridge → {sec.bridge}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+
+                    <div className="border-t border-stone-100 pt-4 mt-2">
+                      <p className="text-xs text-stone-400 mb-2">This will replace your current sections.</p>
                       <button
-                        onClick={() => setConductorNotes(prev => prev.filter((_, j) => j !== i))}
-                        className="text-stone-300 hover:text-stone-500 self-start shrink-0 transition-colors"
-                      >×</button>
-                    </li>
-                  ))}
-                </ul>
+                        onClick={applyConductorOutput}
+                        className="w-full text-sm bg-amber-500 text-white rounded-xl px-4 py-2 hover:bg-amber-600 transition-colors font-medium"
+                      >
+                        Use This
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
+
+              {/* Error state */}
+              {conductorOutput?.error && (
+                <div className="mt-2 bg-red-50 border border-red-100 rounded-xl p-3">
+                  <p className="text-sm text-red-600">{conductorOutput.error}</p>
+                </div>
+              )}
+
             </div>
           </div>
         )}
       </div>
-
-      {/* Check My Set — fixed bottom-right, above capture bar */}
-      <button
-        onClick={checkMySet}
-        disabled={conductorLoading}
-        className="fixed bottom-20 right-5 bg-stone-800 text-white text-sm rounded-full px-5 py-2.5 hover:bg-stone-700 disabled:opacity-50 transition-all shadow-lg z-10 select-none"
-      >
-        {conductorLoading ? '…' : '🎼 Check My Set'}
-      </button>
 
       {/* Capture Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 px-4 py-3 flex gap-2 z-10 shadow-lg">
