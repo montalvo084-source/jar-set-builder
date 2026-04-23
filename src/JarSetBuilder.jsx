@@ -492,14 +492,22 @@ export default function JarSetBuilder() {
     setConductorLoading(true);
     setConductorOutput(null);
 
-    const prompt = `You are the Conductor — a writing assistant for Gabriel, a YouTube creator. Gabriel has ADHD and struggles to build bridges between ideas. He will paste raw, messy notes, half-finished thoughts, and fragments. Your job is to reorganize them into a clear, coherent set structure with an Open, Build, and Close section, and write the transition bridges between sections.
+    const prompt = `You are the Conductor — a writing assistant for Gabriel, a YouTube creator. Gabriel has ADHD and struggles to build bridges between ideas. He will paste raw, messy notes, half-finished thoughts, and fragments.
 
-IMPORTANT RULES:
+Your job:
+1. Read the notes and find the natural topic clusters — the distinct ideas or beats that belong together.
+2. Name each section based on what it's actually about. Use specific, evocative names ("The Mistake I Made", "Why This Actually Matters") not generic ones ("Intro", "Point 1").
+3. If Gabriel has marked sections with [brackets] like [intro] or [point 2], treat those as anchors and organize the content around them.
+4. Write natural spoken bridge transitions between sections.
+5. Find the one through-line that ties everything together.
+
+RULES:
+- Do not force Open/Build/Close unless that structure genuinely fits. Let the content decide the shape. Aim for 3–5 sections.
 - Do not invent new content. Only use ideas present in the input.
 - Keep Gabriel's voice — don't make it corporate or polished.
 - Bridge lines should sound like natural spoken transitions, not written prose.
 - Every bullet should be one concrete beat — one idea, one moment, one point.
-- The core idea should be one sentence naming the actual thesis of the video.
+- The last section should have bridge: null.
 
 INPUT (Gabriel's raw notes):
 ${conductorInput}
@@ -508,9 +516,8 @@ Return ONLY a valid JSON object — no explanation, no markdown, just raw JSON:
 {
   "coreIdea": "One sentence thesis of the whole video",
   "sections": [
-    { "title": "Open",  "type": "story",  "bullets": ["..."], "bridge": "Spoken transition into Build" },
-    { "title": "Build", "type": "points", "bullets": ["..."], "bridge": "Spoken transition into Close" },
-    { "title": "Close", "type": "story",  "bullets": ["..."], "bridge": null }
+    { "title": "Descriptive section name", "type": "story", "bullets": ["..."], "bridge": "Spoken transition to next section" },
+    { "title": "Descriptive section name", "type": "points", "bullets": ["..."], "bridge": null }
   ]
 }`;
 
